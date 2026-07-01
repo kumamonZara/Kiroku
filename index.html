@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Switch">
+<title>Switch — 学習タイムトラッカー</title>
+<style>
+  :root{
+    --bg:#15141a;
+    --surface:#201f27;
+    --surface-2:#2b2a34;
+    --line:#38363f;
+    --text:#edeae3;
+    --text-dim:#8b889a;
+    --live:#f0a030;
+    --danger:#e15252;
+    --radius:16px;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    display:flex; flex-direction:column; gap:14px; min-height:100%;
+    overscroll-behavior:none; user-select:none;
+  }
+  .topbar{display:flex; align-items:center; justify-content:space-between;}
+  .date-nav{display:flex; align-items:center; gap:8px; color:var(--text-dim); font-size:13px;}
+  .date-nav button{background:none; border:none; color:var(--text-dim); font-size:16px; padding:6px 10px; border-radius:8px;}
+  .date-nav button:active{background:var(--surface-2);}
+  .date-label{font-variant-numeric:tabular-nums; min-width:96px; text-align:center;}
+  .gear{background:none; border:none; color:var(--text-dim); font-size:20px; padding:6px 10px;}
+
+  .clock-card{
+    background:var(--surface); border-radius:var(--radius); padding:22px 20px;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    border:1px solid var(--line);
+  }
+  .clock-task{font-size:14px; color:var(--text-dim); letter-spacing:.02em; display:flex; align-items:center; gap:8px;}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--live); flex:none;}
+  .dot.pulse{animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.35; transform:scale(.7);}}
+  .clock-time{font-family:var(--mono); font-size:44px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:.02em;}
+  .clock-sub{font-size:12px; color:var(--text-dim);}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:10px;}
+  .task-btn{
+    position:relative; border:none; border-radius:14px; padding:16px 14px 14px; text-align:left;
+    color:#151318; font-weight:700; font-size:16px; min-height:76px; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:space-between; gap:10px;
+  }
+  .task-btn .name{font-size:16px;}
+  .task-btn .meta{font-family:var(--mono); font-size:12px; font-weight:500; opacity:.75;}
+  .task-btn.active{outline:3px solid rgba(255,255,255,.55); outline-offset:-3px;}
+  .task-btn:active{filter:brightness(0.92);}
+  .add-btn{
+    border:1.5px dashed var(--line); background:transparent; color:var(--text-dim);
+    border-radius:14px; min-height:76px; font-size:15px;
+  }
+  .stopbar{
+    display:flex; gap:10px;
+  }
+  .stop-btn{
+    flex:1; background:var(--surface); border:1px solid var(--line); color:var(--danger);
+    border-radius:14px; padding:14px; font-weight:700; font-size:15px;
+  }
+  .stop-btn:disabled{color:var(--text-dim); opacity:.5;}
+  .export-btn{
+    flex:none; background:var(--surface); border:1px solid var(--line); color:var(--text-dim);
+    border-radius:14px; padding:14px 16px; font-weight:600; font-size:14px;
+  }
+
+  .section-label{font-size:12px; color:var(--text-dim); letter-spacing:.04em; text-transform:uppercase; margin:2px 2px -2px;}
+
+  .daybar{
+    background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px;
+  }
+  .daybar-track{position:relative; height:34px; background:var(--surface-2); border-radius:8px; overflow:hidden;}
+  .daybar-seg{position:absolute; top:0; bottom:0; opacity:.92;}
+  .daybar-ticks{display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim); margin-top:6px; font-family:var(--mono);}
+
+  .totals{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{
+    display:flex; align-items:center; gap:7px; background:var(--surface); border:1px solid var(--line);
+    border-radius:999px; padding:7px 12px; font-size:13px;
+  }
+  .chip .sw{width:9px; height:9px; border-radius:50%;}
+  .chip .val{font-family:var(--mono); color:var(--text-dim);}
+
+  .log{display:flex; flex-direction:column; gap:6px; padding-bottom:8px;}
+  .log-empty{color:var(--text-dim); font-size:13px; text-align:center; padding:18px 0;}
+  .log-row{
+    display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; padding:10px 12px; font-size:13px;
+  }
+  .log-row .sw{width:8px; height:8px; border-radius:50%; flex:none;}
+  .log-row .who{font-weight:600; flex:1;}
+  .log-row .when{color:var(--text-dim); font-family:var(--mono); font-size:12px;}
+  .log-row .dur{font-family:var(--mono); color:var(--text-dim); font-size:12px; min-width:44px; text-align:right;}
+  .log-row .del{background:none; border:none; color:var(--text-dim); font-size:16px; padding:2px 6px;}
+
+  /* modal */
+  .overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:flex-end; justify-content:center; z-index:50;}
+  .overlay.show{display:flex;}
+  .sheet{
+    width:100%; max-width:480px; background:var(--surface); border-radius:20px 20px 0 0;
+    padding:18px 18px max(18px, env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:14px;
+    border-top:1px solid var(--line);
+  }
+  .sheet h3{margin:0; font-size:16px;}
+  .sheet label{font-size:12px; color:var(--text-dim);}
+  .sheet input[type=text], .sheet input[type=url]{
+    width:100%; background:var(--surface-2); border:1px solid var(--line); border-radius:10px; color:var(--text);
+    padding:12px; font-size:15px; font-family:var(--sans);
+  }
+  .swatches{display:flex; gap:8px; flex-wrap:wrap;}
+  .swatch{width:32px; height:32px; border-radius:50%; border:2px solid transparent;}
+  .swatch.sel{border-color:#fff;}
+  .row{display:flex; gap:10px;}
+  .row button{flex:1; padding:13px; border-radius:12px; border:none; font-weight:700; font-size:15px;}
+  .btn-primary{background:var(--live); color:#151318;}
+  .btn-ghost{background:var(--surface-2); color:var(--text);}
+  .btn-danger{background:transparent; color:var(--danger); border:1px solid var(--line) !important;}
+  .close-x{align-self:flex-end; background:none; border:none; color:var(--text-dim); font-size:20px; margin:-8px -6px 0 0;}
+  .task-list-edit{display:flex; flex-direction:column; gap:8px; max-height:40vh; overflow-y:auto;}
+  .tle-row{display:flex; align-items:center; gap:10px; background:var(--surface-2); border-radius:10px; padding:8px 10px;}
+  .tle-row .sw{width:14px; height:14px; border-radius:50%; flex:none;}
+  .tle-row .nm{flex:1; font-size:14px;}
+  .tle-row button{background:none; border:none; color:var(--text-dim); font-size:14px;}
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="date-nav">
+      <button id="dayPrev">‹</button>
+      <div class="date-label" id="dateLabel">今日</div>
+      <button id="dayNext">›</button>
+    </div>
+    <button class="gear" id="openSettings">⚙</button>
+  </div>
+
+  <div class="clock-card">
+    <div class="clock-task"><span class="dot" id="statusDot"></span><span id="clockTaskName">停止中</span></div>
+    <div class="clock-time" id="clockTime">00:00:00</div>
+    <div class="clock-sub" id="clockSub">タップして開始</div>
+  </div>
+
+  <div class="grid" id="taskGrid"></div>
+
+  <div class="stopbar">
+    <button class="stop-btn" id="stopAllBtn">■ すべて停止</button>
+    <button class="export-btn" id="exportBtn">CSV書き出し</button>
+    <button class="export-btn" id="editTasksBtn">タスク編集</button>
+  </div>
+
+  <div class="section-label">今日の内訳</div>
+  <div class="daybar">
+    <div class="daybar-track" id="dayTrack"></div>
+    <div class="daybar-ticks"><span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>24時</span></div>
+  </div>
+
+  <div class="totals" id="totals"></div>
+
+  <div class="section-label">記録</div>
+  <div class="log" id="log"></div>
+
+  <!-- Settings sheet -->
+  <div class="overlay" id="settingsOverlay">
+    <div class="sheet">
+      <button class="close-x" data-close="settingsOverlay">✕</button>
+      <h3>設定</h3>
+      <div>
+        <label>Google Apps Script Webhook URL（任意・スプレッドシート自動送信）</label>
+        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+      </div>
+      <div class="row">
+        <button class="btn-ghost" id="saveSettings">保存</button>
+      </div>
+      <div class="row">
+        <button class="btn-danger" id="wipeData">この端末のデータを全消去</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task edit sheet -->
+  <div class="overlay" id="taskEditOverlay">
+    <div class="sheet">
+      <button class="close-x" data-close="taskEditOverlay">✕</button>
+      <h3>タスク編集</h3>
+      <div class="task-list-edit" id="taskListEdit"></div>
+      <div>
+        <label>新しいタスク名</label>
+        <input type="text" id="newTaskName" placeholder="例：化学">
+      </div>
+      <div class="swatches" id="newTaskSwatches"></div>
+      <div class="row">
+        <button class="btn-primary" id="addTaskBtn">追加</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+  const STORAGE_KEY = "switchTracker_v1";
+  const PALETTE = ["#f0a030","#5fa8d3","#7fb77e","#c97bc9","#e1735e","#4fc3c0","#e0c667","#9a9dc4"];
+
+  const defaultState = () => ({
+    tasks: [
+      {id:"t1", name:"数学", color:"#f0a030"},
+      {id:"t2", name:"物理", color:"#5fa8d3"},
+      {id:"t3", name:"英語", color:"#7fb77e"},
+      {id:"t4", name:"休憩", color:"#8b889a"},
+    ],
+    segments: [], // {id, taskId, taskName, taskColor, start, end}  (ISO strings)
+    active: null, // {taskId, taskName, taskColor, start}
+    settings: {gasUrl: ""}
+  });
+
+  let state = load();
+  let viewDate = todayStr();
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      return Object.assign(defaultState(), parsed, {
+        tasks: parsed.tasks && parsed.tasks.length ? parsed.tasks : defaultState().tasks,
+        segments: parsed.segments || [],
+        settings: Object.assign({gasUrl:""}, parsed.settings||{})
+      });
+    }catch(e){ return defaultState(); }
+  }
+  function save(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+  function todayStr(){
+    const d = new Date();
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+  function dateStrOf(iso){ return iso.slice(0,10); }
+  function fmtHM(iso){
+    const d = new Date(iso);
+    return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  }
+  function fmtDur(mins){
+    const h = Math.floor(mins/60), m = mins%60;
+    return h>0 ? (h+"時間"+m+"分") : (m+"分");
+  }
+  function isToday(ds){ return ds === todayStr(); }
+
+  // ---- core switching logic ----
+  function switchTask(task){
+    const now = new Date().toISOString();
+    closeActive(now);
+    state.active = {taskId: task.id, taskName: task.name, taskColor: task.color, start: now};
+    save();
+    renderAll();
+  }
+  function stopAll(){
+    if(!state.active) return;
+    closeActive(new Date().toISOString());
+    save();
+    renderAll();
+  }
+  function closeActive(nowIso){
+    if(!state.active) return;
+    const seg = {
+      id: "s"+Date.now()+Math.random().toString(36).slice(2,7),
+      taskId: state.active.taskId,
+      taskName: state.active.taskName,
+      taskColor: state.active.taskColor,
+      start: state.active.start,
+      end: nowIso
+    };
+    state.segments.push(seg);
+    sendToGAS(seg);
+    state.active = null;
+  }
+  function sendToGAS(seg){
+    const url = state.settings.gasUrl;
+    if(!url) return;
+    try{
+      fetch(url, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {"Content-Type":"text/plain"},
+        body: JSON.stringify({task: seg.taskName, start: seg.start, end: seg.end})
+      }).catch(()=>{});
+    }catch(e){}
+  }
+  function deleteSegment(id){
+    state.segments = state.segments.filter(s=>s.id!==id);
+    save(); renderAll();
+  }
+
+  // ---- task CRUD ----
+  function addTask(name, color){
+    if(!name.trim()) return;
+    state.tasks.push({id:"t"+Date.now(), name:name.trim(), color});
+    save(); renderAll();
+  }
+  function deleteTask(id){
+    if(state.active && state.active.taskId===id){ stopAll(); }
+    state.tasks = state.tasks.filter(t=>t.id!==id);
+    save(); renderAll();
+  }
+
+  // ---- rendering ----
+  const el = id => document.getElementById(id);
+
+  function segmentsForDate(ds){
+    return state.segments.filter(s=>dateStrOf(s.start)===ds).sort((a,b)=> a.start < b.start ? 1 : -1);
+  }
+
+  function renderClock(){
+    const dot = el("statusDot");
+    if(state.active){
+      dot.classList.add("pulse");
+      el("clockTaskName").textContent = state.active.taskName;
+      const secs = Math.floor((Date.now() - new Date(state.active.start).getTime())/1000);
+      el("clockTime").textContent = hms(secs);
+      el("clockSub").textContent = "開始 " + fmtHM(state.active.start);
+    } else {
+      dot.classList.remove("pulse");
+      el("clockTaskName").textContent = "停止中";
+      el("clockTime").textContent = "00:00:00";
+      el("clockSub").textContent = "タップして開始";
+    }
+  }
+  function hms(totalSec){
+    const h = Math.floor(totalSec/3600);
+    const m = Math.floor((totalSec%3600)/60);
+    const s = totalSec%60;
+    return [h,m,s].map(v=>String(v).padStart(2,"0")).join(":");
+  }
+
+  function renderTasks(){
+    const grid = el("taskGrid");
+    grid.innerHTML = "";
+    state.tasks.forEach(t=>{
+      const btn = document.createElement("button");
+      btn.className = "task-btn" + (state.active && state.active.taskId===t.id ? " active":"");
+      btn.style.background = t.color;
+      const todaysMin = minutesForTaskToday(t.id);
+      btn.innerHTML = `<span class="name">${escapeHtml(t.name)}</span><span class="meta">${todaysMin>0? fmtDur(todaysMin) : "―"}</span>`;
+      btn.onclick = ()=> switchTask(t);
+      grid.appendChild(btn);
+    });
+    const addBtn = document.createElement("button");
+    addBtn.className = "task-btn add-btn";
+    addBtn.textContent = "＋ タスクを編集";
+    addBtn.onclick = ()=> openSheet("taskEditOverlay");
+    grid.appendChild(addBtn);
+
+    el("stopAllBtn").disabled = !state.active;
+  }
+
+  function minutesForTaskToday(taskId){
+    let total = 0;
+    segmentsForDate(todayStr()).forEach(s=>{
+      if(s.taskId===taskId) total += (new Date(s.end)-new Date(s.start))/60000;
+    });
+    if(state.active && state.active.taskId===taskId){
+      total += (Date.now()-new Date(state.active.start).getTime())/60000;
+    }
+    return Math.round(total);
+  }
+
+  function renderDayBar(){
+    const track = el("dayTrack");
+    track.innerHTML = "";
+    const segs = segmentsForDate(viewDate).slice().reverse();
+    segs.forEach(s=> track.appendChild(makeBarSeg(s.start, s.end, s.taskColor)));
+    if(isToday(viewDate) && state.active){
+      track.appendChild(makeBarSeg(state.active.start, new Date().toISOString(), state.active.taskColor));
+    }
+  }
+  function makeBarSeg(startIso, endIso, color){
+    const dayStart = new Date(viewDate+"T00:00:00").getTime();
+    const startPct = Math.max(0,(new Date(startIso).getTime()-dayStart)/86400000*100);
+    const endPct = Math.min(100,(new Date(endIso).getTime()-dayStart)/86400000*100);
+    const div = document.createElement("div");
+    div.className = "daybar-seg";
+    div.style.left = startPct+"%";
+    div.style.width = Math.max(0.3, endPct-startPct)+"%";
+    div.style.background = color;
+    return div;
+  }
+
+  function renderTotals(){
+    const box = el("totals");
+    box.innerHTML = "";
+    const byTask = {};
+    segmentsForDate(viewDate).forEach(s=>{
+      const mins = (new Date(s.end)-new Date(s.start))/60000;
+      byTask[s.taskId] = byTask[s.taskId] || {name:s.taskName, color:s.taskColor, mins:0};
+      byTask[s.taskId].mins += mins;
+    });
+    if(isToday(viewDate) && state.active){
+      const id = state.active.taskId;
+      byTask[id] = byTask[id] || {name:state.active.taskName, color:state.active.taskColor, mins:0};
+      byTask[id].mins += (Date.now()-new Date(state.active.start).getTime())/60000;
+    }
+    const entries = Object.values(byTask).sort((a,b)=>b.mins-a.mins);
+    if(entries.length===0){
+      box.innerHTML = `<span style="color:var(--text-dim); font-size:13px;">記録なし</span>`;
+      return;
+    }
+    entries.forEach(e=>{
+      const chip = document.createElement("div");
+      chip.className = "chip";
+      chip.innerHTML = `<span class="sw" style="background:${e.color}"></span>${escapeHtml(e.name)}<span class="val">${fmtDur(Math.round(e.mins))}</span>`;
+      box.appendChild(chip);
+    });
+  }
+
+  function renderLog(){
+    const box = el("log");
+    box.innerHTML = "";
+    const segs = segmentsForDate(viewDate);
+    if(segs.length===0){
+      box.innerHTML = `<div class="log-empty">この日の記録はまだありません</div>`;
+      return;
+    }
+    segs.forEach(s=>{
+      const mins = Math.round((new Date(s.end)-new Date(s.start))/60000);
+      const row = document.createElement("div");
+      row.className = "log-row";
+      row.innerHTML = `
+        <span class="sw" style="background:${s.taskColor}"></span>
+        <span class="who">${escapeHtml(s.taskName)}</span>
+        <span class="when">${fmtHM(s.start)}–${fmtHM(s.end)}</span>
+        <span class="dur">${mins}分</span>
+        <button class="del" data-id="${s.id}">✕</button>
+      `;
+      row.querySelector(".del").onclick = ()=> deleteSegment(s.id);
+      box.appendChild(row);
+    });
+  }
+
+  function renderDateLabel(){
+    el("dateLabel").textContent = isToday(viewDate) ? "今日" : viewDate.slice(5).replace("-","/");
+    el("dayNext").disabled = isToday(viewDate);
+  }
+
+  function renderTaskEditList(){
+    const box = el("taskListEdit");
+    box.innerHTML = "";
+    state.tasks.forEach(t=>{
+      const row = document.createElement("div");
+      row.className = "tle-row";
+      row.innerHTML = `<span class="sw" style="background:${t.color}"></span><span class="nm">${escapeHtml(t.name)}</span><button data-id="${t.id}">削除</button>`;
+      row.querySelector("button").onclick = ()=>{ deleteTask(t.id); renderTaskEditList(); };
+      box.appendChild(row);
+    });
+  }
+
+  function renderSwatchPicker(){
+    const box = el("newTaskSwatches");
+    box.innerHTML = "";
+    let sel = PALETTE[0];
+    PALETTE.forEach((c,i)=>{
+      const s = document.createElement("div");
+      s.className = "swatch"+(i===0?" sel":"");
+      s.style.background = c;
+      s.onclick = ()=>{
+        box.querySelectorAll(".swatch").forEach(x=>x.classList.remove("sel"));
+        s.classList.add("sel");
+        sel = c;
+      };
+      s.dataset.color = c;
+      box.appendChild(s);
+    });
+    box.dataset.selected = sel;
+    box._getSelected = ()=> box.querySelector(".swatch.sel").dataset.color;
+  }
+
+  function escapeHtml(str){
+    return str.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function renderAll(){
+    renderClock();
+    renderTasks();
+    renderDayBar();
+    renderTotals();
+    renderLog();
+    renderDateLabel();
+  }
+
+  // ---- sheets ----
+  function openSheet(id){ el(id).classList.add("show"); }
+  function closeSheet(id){ el(id).classList.remove("show"); }
+  document.querySelectorAll("[data-close]").forEach(b=>{
+    b.onclick = ()=> closeSheet(b.dataset.close);
+  });
+  document.querySelectorAll(".overlay").forEach(o=>{
+    o.addEventListener("click", e=>{ if(e.target===o) closeSheet(o.id); });
+  });
+
+  el("openSettings").onclick = ()=>{
+    el("gasUrlInput").value = state.settings.gasUrl || "";
+    openSheet("settingsOverlay");
+  };
+  el("saveSettings").onclick = ()=>{
+    state.settings.gasUrl = el("gasUrlInput").value.trim();
+    save();
+    closeSheet("settingsOverlay");
+  };
+  el("wipeData").onclick = ()=>{
+    if(confirm("この端末に保存された全ての記録を削除します。よろしいですか？")){
+      state = defaultState();
+      save();
+      renderAll();
+      closeSheet("settingsOverlay");
+    }
+  };
+
+  el("editTasksBtn").onclick = ()=>{
+    renderTaskEditList();
+    renderSwatchPicker();
+    el("newTaskName").value = "";
+    openSheet("taskEditOverlay");
+  };
+  el("addTaskBtn").onclick = ()=>{
+    const name = el("newTaskName").value;
+    const swatchBox = el("newTaskSwatches");
+    const color = swatchBox._getSelected ? swatchBox._getSelected() : PALETTE[0];
+    if(!name.trim()) return;
+    addTask(name, color);
+    renderTaskEditList();
+    el("newTaskName").value = "";
+  };
+
+  el("stopAllBtn").onclick = stopAll;
+
+  el("exportBtn").onclick = ()=>{
+    const rows = [["date","task","start","end","minutes"]];
+    state.segments.slice().sort((a,b)=> a.start<b.start?-1:1).forEach(s=>{
+      const mins = Math.round((new Date(s.end)-new Date(s.start))/60000);
+      rows.push([dateStrOf(s.start), s.taskName, s.start, s.end, mins]);
+    });
+    const csv = rows.map(r=> r.map(v=> `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "time_tracker_"+todayStr()+".csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  el("dayPrev").onclick = ()=>{
+    const d = new Date(viewDate+"T00:00:00"); d.setDate(d.getDate()-1);
+    viewDate = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    renderAll();
+  };
+  el("dayNext").onclick = ()=>{
+    if(isToday(viewDate)) return;
+    const d = new Date(viewDate+"T00:00:00"); d.setDate(d.getDate()+1);
+    viewDate = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    renderAll();
+  };
+
+  // tick
+  setInterval(()=>{
+    renderClock();
+    if(isToday(viewDate)){ renderDayBar(); renderTotals(); renderTasks(); }
+  }, 1000);
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
