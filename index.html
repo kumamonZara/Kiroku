@@ -91,9 +91,40 @@
   .daybar{
     background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px;
   }
+  .daybar-sublabel{font-size:10px; color:var(--text-dim); letter-spacing:.03em; margin-bottom:4px;}
   .daybar-track{position:relative; height:34px; background:var(--surface-2); border-radius:8px; overflow:hidden;}
+  .plan-track{height:20px; opacity:.9;}
+  .plan-track .daybar-seg{opacity:.45; border:1px solid rgba(255,255,255,.25); box-sizing:border-box;}
   .daybar-seg{position:absolute; top:0; bottom:0; opacity:.92;}
   .daybar-ticks{display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim); margin-top:6px; font-family:var(--mono);}
+
+  .split-cols{display:flex; flex-direction:column; gap:18px;}
+  .col{min-width:0;}
+  @media (min-width:820px){
+    .split-cols{flex-direction:row;}
+    .col{flex:1;}
+  }
+  .plan-header{display:flex; align-items:center; gap:10px; justify-content:space-between;}
+  .match-rate{font-family:var(--mono); color:var(--live); font-size:11px; white-space:nowrap;}
+  .plan-toggle-btn{
+    background:var(--surface); border:1px solid var(--line); color:var(--text-dim);
+    border-radius:8px; padding:5px 10px; font-size:11px; white-space:nowrap;
+  }
+  .plan-input-row{
+    display:flex; flex-wrap:wrap; gap:6px; background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; padding:8px; margin-top:4px;
+  }
+  .plan-input-row select, .plan-input-row input[type=time]{
+    flex:1; min-width:88px; background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    color:var(--text); padding:8px; font-size:13px; font-family:var(--sans);
+  }
+  .plan-input-row button{
+    background:var(--live); color:#151318; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;
+  }
+
+  .task-groups{display:flex; flex-direction:column; gap:14px;}
+  .task-group{display:flex; flex-direction:column; gap:6px;}
+  .group-label{font-size:11px; color:var(--text-dim); letter-spacing:.05em; margin:0 2px;}
 
   .totals{display:flex; flex-wrap:wrap; gap:8px;}
   .chip{
@@ -174,7 +205,7 @@
     <div class="clock-sub" id="clockSub">タップして開始</div>
   </div>
 
-  <div class="grid" id="taskGrid"></div>
+  <div class="task-groups" id="taskGrid"></div>
 
   <div class="section-label" id="subLabel" style="display:none;">サブ項目</div>
   <div class="grid subgrid" id="subGrid"></div>
@@ -187,14 +218,36 @@
 
   <div class="section-label">今日の内訳</div>
   <div class="daybar">
+    <div class="daybar-sublabel">予定</div>
+    <div class="daybar-track plan-track" id="planTrack"></div>
+    <div class="daybar-sublabel" style="margin-top:8px;">実績</div>
     <div class="daybar-track" id="dayTrack"></div>
     <div class="daybar-ticks"><span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>24時</span></div>
   </div>
 
   <div class="totals" id="totals"></div>
 
-  <div class="section-label">記録</div>
-  <div class="log" id="log"></div>
+  <div class="split-cols">
+    <div class="col">
+      <div class="section-label">記録（実績）</div>
+      <div class="log" id="log"></div>
+    </div>
+    <div class="col">
+      <div class="section-label plan-header">
+        <span>予定</span>
+        <span class="match-rate" id="matchRate"></span>
+        <button class="plan-toggle-btn" id="planToggleBtn">＋ 予定を追加</button>
+      </div>
+      <div class="plan-input-row" id="planInputRow" style="display:none;">
+        <select id="planTaskSelect"></select>
+        <select id="planSubSelect"></select>
+        <input type="time" id="planStart">
+        <input type="time" id="planEnd">
+        <button id="planAddBtn">追加</button>
+      </div>
+      <div class="log" id="planList"></div>
+    </div>
+  </div>
 
   <!-- Settings sheet -->
   <div class="overlay" id="settingsOverlay">
@@ -203,7 +256,7 @@
       <h3>設定</h3>
       <div>
         <label>Google Apps Script Webhook URL（任意・スプレッドシート自動送信）</label>
-        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/AKfycby2ccU8WNcuE_3Qh6Ykx2lDgpUPd_eLT2Bn9lQjmDU8LYFI5coXpAyBYSyT7IV5uE7NQQ/exec">
+        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
       </div>
       <div class="row">
         <button class="btn-ghost" id="saveSettings">保存</button>
@@ -252,50 +305,45 @@
   const defaultState = () => ({
     tasks: [
       // 国語（赤系）
-      {id:"t1", name:"現代文", color:"#e1735e"},
-      {id:"t2", name:"漢文", color:"#c9573f"},
-      {id:"t3", name:"古文", color:"#f0a08c"},
+      {id:"t1", name:"現代文", color:"#e1735e", group:"国語"},
+      {id:"t2", name:"漢文", color:"#c9573f", group:"国語"},
+      {id:"t3", name:"古文", color:"#f0a08c", group:"国語"},
       // 地歴公民（茶系）
-      {id:"t4", name:"地理", color:"#c98f5f"},
-      {id:"t5", name:"歴史", color:"#a8703f"},
-      {id:"t6", name:"政治・経済(倫理)", color:"#dba873"},
+      {id:"t4", name:"地理", color:"#c98f5f", group:"地歴公民"},
+      {id:"t5", name:"歴史", color:"#a8703f", group:"地歴公民"},
+      {id:"t6", name:"政治・経済(倫理)", color:"#dba873", group:"地歴公民"},
       // 数学（青系）
-      {id:"t7", name:"数学Ⅰ", color:"#5fa8d3"},
-      {id:"t8", name:"数学Ⅱ", color:"#4a8ab8"},
-      {id:"t9", name:"数学Ⅲ", color:"#7fc4e8"},
-      {id:"t10", name:"数学A", color:"#3a6f96"},
-      {id:"t11", name:"数学B", color:"#6fb6dd"},
-      {id:"t12", name:"数学C", color:"#2c5878"},
+      {id:"t7", name:"数学Ⅰ", color:"#5fa8d3", group:"数学"},
+      {id:"t8", name:"数学Ⅱ", color:"#4a8ab8", group:"数学"},
+      {id:"t9", name:"数学Ⅲ", color:"#7fc4e8", group:"数学"},
+      {id:"t10", name:"数学A", color:"#3a6f96", group:"数学"},
+      {id:"t11", name:"数学B", color:"#6fb6dd", group:"数学"},
+      {id:"t12", name:"数学C", color:"#2c5878", group:"数学"},
       // 理科（緑系）
-      {id:"t13", name:"化学", color:"#7fb77e"},
-      {id:"t14", name:"生物", color:"#6aa869"},
-      {id:"t15", name:"物理", color:"#8fcf8c"},
-      {id:"t16", name:"地学", color:"#588f57"},
-      // 単独教科
-      {id:"t17", name:"英語", color:"#c97bc9"},
-      {id:"t18", name:"情報", color:"#4fc3c0"},
+      {id:"t13", name:"化学", color:"#7fb77e", group:"理科"},
+      {id:"t14", name:"生物", color:"#6aa869", group:"理科"},
+      {id:"t15", name:"物理", color:"#8fcf8c", group:"理科"},
+      {id:"t16", name:"地学", color:"#588f57", group:"理科"},
+      // 語学・情報
+      {id:"t17", name:"英語", color:"#c97bc9", group:"語学・情報"},
+      {id:"t18", name:"情報", color:"#4fc3c0", group:"語学・情報"},
       // 生活系
-      {id:"t19", name:"学校関係", color:"#7d8fa3"},
-      {id:"t20", name:"遊び", color:"#d98fb0"},
-      {id:"t21", name:"移動", color:"#9fb0c9"},
-      {id:"t22", name:"睡眠", color:"#5a5fa0"},
-      {id:"t23", name:"食事", color:"#e0954a"},
-      {id:"t24", name:"その他", color:"#7a7a7a"},
-      {id:"t25", name:"休憩", color:"#8b889a"},
+      {id:"t19", name:"学校関係", color:"#7d8fa3", group:"生活"},
+      {id:"t20", name:"遊び", color:"#d98fb0", group:"生活"},
+      {id:"t21", name:"移動", color:"#9fb0c9", group:"生活"},
+      {id:"t22", name:"睡眠", color:"#5a5fa0", group:"生活"},
+      {id:"t23", name:"食事", color:"#e0954a", group:"生活"},
+      {id:"t24", name:"その他", color:"#7a7a7a", group:"生活"},
+      {id:"t25", name:"休憩", color:"#8b889a", group:"生活"},
     ],
     tags: [ // タグ（サブ項目）：どの教科とも自由に組み合わせられる
       {id:"g1", name:"チャート"},
-      {id:"g2", name:"クリアー"},
-      {id:"g3", name:"基礎問題精講"},
-      {id:"g4", name:"リードα"},
-      {id:"g5", name:"英単語帳"},
-      {id:"g6", name:"古文単語帳"},
-      {id:"g7", name:"用語集"},
-      
+      {id:"g2", name:"ターゲット"},
     ],
     segments: [], // {id, taskId, taskName, taskColor, subId, subName, start, end}  (ISO strings) ※sub=タグ
+    plans: [], // {id, taskId, taskName, taskColor, subId, subName, start, end} 予定（ISO strings）
     active: null, // {taskId, taskName, taskColor, subId, subName, start}
-    settings: {gasUrl: ""}
+    settings: {gasUrl: "https://script.google.com/macros/s/AKfycby2ccU8WNcuE_3Qh6Ykx2lDgpUPd_eLT2Bn9lQjmDU8LYFI5coXpAyBYSyT7IV5uE7NQQ/exec"}
   });
 
   let pendingTag = null; // メインが停止中のときに先にタグだけ選んでおく一時状態
@@ -319,10 +367,11 @@
       }
       return Object.assign(defaultState(), parsed, {
         tasks: (parsed.tasks && parsed.tasks.length ? parsed.tasks : defaultState().tasks)
-          .map(t=> ({id:t.id, name:t.name, color:t.color})),
+          .map(t=> ({id:t.id, name:t.name, color:t.color, group:t.group || "その他"})),
         tags: migratedTags || (parsed.tags && parsed.tags.length ? parsed.tags : defaultState().tags),
         segments: (parsed.segments || []).map(s=> Object.assign({subId:"", subName:""}, s)),
-        settings: Object.assign({gasUrl:""}, parsed.settings||{})
+        plans: (parsed.plans || []).map(p=> Object.assign({subId:"", subName:""}, p)),
+        settings: Object.assign({gasUrl: defaultState().settings.gasUrl}, parsed.settings||{})
       });
     }catch(e){ return defaultState(); }
   }
@@ -346,6 +395,10 @@
 
   // ---- core switching logic ----
   function switchTask(task){
+    if(state.active && state.active.taskId === task.id){
+      stopAll();
+      return;
+    }
     const now = new Date().toISOString();
     const carryTagId = state.active ? state.active.subId : (pendingTag || "");
     const carryTagName = state.active ? state.active.subName : tagName(pendingTag);
@@ -413,7 +466,19 @@
         method: "POST",
         mode: "no-cors",
         headers: {"Content-Type":"text/plain"},
-        body: JSON.stringify({task: seg.taskName, sub: seg.subName || "", start: seg.start, end: seg.end, color: seg.taskColor})
+        body: JSON.stringify({type:"actual", task: seg.taskName, sub: seg.subName || "", start: seg.start, end: seg.end, color: seg.taskColor})
+      }).catch(()=>{});
+    }catch(e){}
+  }
+  function sendPlanToGAS(p){
+    const url = state.settings.gasUrl;
+    if(!url) return;
+    try{
+      fetch(url, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {"Content-Type":"text/plain"},
+        body: JSON.stringify({type:"plan", task: p.taskName, sub: p.subName || "", start: p.start, end: p.end, color: p.taskColor})
       }).catch(()=>{});
     }catch(e){}
   }
@@ -422,10 +487,59 @@
     save(); renderAll();
   }
 
+  // ---- 予定（Plan）CRUD ----
+  function plansForDate(ds){
+    return state.plans.filter(p=>dateStrOf(p.start)===ds).sort((a,b)=> a.start < b.start ? -1 : 1);
+  }
+  function addPlan(taskId, subId, dateStr, startHM, endHM){
+    const task = state.tasks.find(t=>t.id===taskId);
+    if(!task || !startHM || !endHM) return false;
+    const startIso = `${dateStr}T${startHM}:00`;
+    let endIso = `${dateStr}T${endHM}:00`;
+    if(endIso <= startIso) return false; // 終了が開始より前は不可
+    const sub = subId ? state.tags.find(t=>t.id===subId) : null;
+    state.plans.push({
+      id: "p"+Date.now()+Math.random().toString(36).slice(2,5),
+      taskId: task.id, taskName: task.name, taskColor: task.color,
+      subId: sub ? sub.id : "", subName: sub ? sub.name : "",
+      start: startIso, end: endIso
+    });
+    save();
+    sendPlanToGAS(state.plans[state.plans.length-1]);
+    renderAll();
+    return true;
+  }
+  function deletePlan(id){
+    state.plans = state.plans.filter(p=>p.id!==id);
+    save(); renderAll();
+  }
+  function matchRateForDate(ds){
+    const plans = plansForDate(ds);
+    if(plans.length===0) return null;
+    let totalPlanned = 0, totalMatched = 0;
+    plans.forEach(p=>{
+      const pStart = new Date(p.start).getTime(), pEnd = new Date(p.end).getTime();
+      const dur = Math.max(0, (pEnd-pStart)/60000);
+      totalPlanned += dur;
+      let matched = 0;
+      segmentsForDate(ds).forEach(s=>{
+        if(s.taskId!==p.taskId || (p.subId && s.subId!==p.subId)) return;
+        const aStart = new Date(s.start).getTime(), aEnd = new Date(s.end).getTime();
+        matched += Math.max(0, Math.min(aEnd,pEnd)-Math.max(aStart,pStart));
+      });
+      if(isToday(ds) && state.active && state.active.taskId===p.taskId && (!p.subId || state.active.subId===p.subId)){
+        const aStart = new Date(state.active.start).getTime(), aEnd = Date.now();
+        matched += Math.max(0, Math.min(aEnd,pEnd)-Math.max(aStart,pStart));
+      }
+      totalMatched += Math.min(matched/60000, dur);
+    });
+    return totalPlanned>0 ? Math.round(totalMatched/totalPlanned*100) : null;
+  }
+
   // ---- task / tag CRUD ----
   function addTask(name, color){
     if(!name.trim()) return;
-    state.tasks.push({id:"t"+Date.now(), name:name.trim(), color});
+    state.tasks.push({id:"t"+Date.now(), name:name.trim(), color, group:"その他"});
     save(); renderAll();
   }
   function deleteTask(id){
@@ -474,24 +588,50 @@
     return [h,m,s].map(v=>String(v).padStart(2,"0")).join(":");
   }
 
+  const GROUP_ORDER = ["国語","地歴公民","数学","理科","語学・情報","生活","その他"];
+
   function renderTasks(){
-    const grid = el("taskGrid");
-    grid.innerHTML = "";
+    const wrap = el("taskGrid");
+    wrap.innerHTML = "";
+    const byGroup = {};
     state.tasks.forEach(t=>{
-      const btn = document.createElement("button");
-      const isActive = state.active && state.active.taskId===t.id;
-      btn.className = "task-btn" + (isActive ? " active":"");
-      btn.style.background = t.color;
-      const todaysMin = minutesForTaskToday(t.id);
-      btn.innerHTML = `<span class="name">${escapeHtml(t.name)}</span><span class="meta">${todaysMin>0? fmtDur(todaysMin) : "―"}</span>`;
-      btn.onclick = ()=> switchTask(t);
-      grid.appendChild(btn);
+      const g = t.group || "その他";
+      (byGroup[g] = byGroup[g] || []).push(t);
     });
+    const orderedGroups = GROUP_ORDER.filter(g=>byGroup[g]).concat(Object.keys(byGroup).filter(g=>!GROUP_ORDER.includes(g)));
+
+    orderedGroups.forEach(g=>{
+      const groupWrap = document.createElement("div");
+      groupWrap.className = "task-group";
+      const label = document.createElement("div");
+      label.className = "group-label";
+      label.textContent = g;
+      groupWrap.appendChild(label);
+
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      byGroup[g].forEach(t=>{
+        const btn = document.createElement("button");
+        const isActive = state.active && state.active.taskId===t.id;
+        btn.className = "task-btn" + (isActive ? " active":"");
+        btn.style.background = t.color;
+        const todaysMin = minutesForTaskToday(t.id);
+        btn.innerHTML = `<span class="name">${escapeHtml(t.name)}</span><span class="meta">${todaysMin>0? fmtDur(todaysMin) : "―"}</span>`;
+        btn.onclick = ()=> switchTask(t);
+        grid.appendChild(btn);
+      });
+      groupWrap.appendChild(grid);
+      wrap.appendChild(groupWrap);
+    });
+
+    const addWrap = document.createElement("div");
+    addWrap.className = "grid";
     const addBtn = document.createElement("button");
     addBtn.className = "task-btn add-btn";
     addBtn.textContent = "＋ タスクを編集";
     addBtn.onclick = ()=> openSheet("taskEditOverlay");
-    grid.appendChild(addBtn);
+    addWrap.appendChild(addBtn);
+    wrap.appendChild(addWrap);
 
     el("stopAllBtn").disabled = !state.active;
     renderSubtasks();
@@ -547,6 +687,12 @@
     if(isToday(viewDate) && state.active){
       track.appendChild(makeBarSeg(state.active.start, new Date().toISOString(), state.active.taskColor));
     }
+    renderPlanTrack();
+  }
+  function renderPlanTrack(){
+    const track = el("planTrack");
+    track.innerHTML = "";
+    plansForDate(viewDate).forEach(p=> track.appendChild(makeBarSeg(p.start, p.end, p.taskColor)));
   }
   function makeBarSeg(startIso, endIso, color){
     const dayStart = new Date(viewDate+"T00:00:00").getTime();
@@ -617,6 +763,40 @@
     el("dayNext").disabled = isToday(viewDate);
   }
 
+  function renderPlanList(){
+    const box = el("planList");
+    box.innerHTML = "";
+    const plans = plansForDate(viewDate);
+    if(plans.length===0){
+      box.innerHTML = `<div class="log-empty">この日の予定はまだありません</div>`;
+    } else {
+      plans.forEach(p=>{
+        const mins = Math.round((new Date(p.end)-new Date(p.start))/60000);
+        const row = document.createElement("div");
+        row.className = "log-row";
+        const who = p.subName ? `${escapeHtml(p.taskName)} ・ ${escapeHtml(p.subName)}` : escapeHtml(p.taskName);
+        row.innerHTML = `
+          <span class="sw" style="background:${p.taskColor}"></span>
+          <span class="who">${who}</span>
+          <span class="when">${fmtHM(p.start)}–${fmtHM(p.end)}</span>
+          <span class="dur">${mins}分</span>
+          <button class="del" data-id="${p.id}">✕</button>
+        `;
+        row.querySelector(".del").onclick = ()=> deletePlan(p.id);
+        box.appendChild(row);
+      });
+    }
+    const rate = matchRateForDate(viewDate);
+    el("matchRate").textContent = rate===null ? "" : `一致率 ${rate}%`;
+  }
+
+  function populatePlanSelectors(){
+    const taskSel = el("planTaskSelect");
+    taskSel.innerHTML = state.tasks.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    const subSel = el("planSubSelect");
+    subSel.innerHTML = `<option value="">サブなし</option>` + state.tags.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("");
+  }
+
   function renderTaskEditList(){
     const box = el("taskListEdit");
     box.innerHTML = "";
@@ -675,6 +855,7 @@
     renderDayBar();
     renderTotals();
     renderLog();
+    renderPlanList();
     renderDateLabel();
   }
 
@@ -733,6 +914,24 @@
 
   el("stopAllBtn").onclick = stopAll;
 
+  el("planToggleBtn").onclick = ()=>{
+    const row = el("planInputRow");
+    const showing = row.style.display !== "none";
+    if(!showing) populatePlanSelectors();
+    row.style.display = showing ? "none" : "flex";
+    el("planToggleBtn").textContent = showing ? "＋ 予定を追加" : "－ 閉じる";
+  };
+  el("planAddBtn").onclick = ()=>{
+    const taskId = el("planTaskSelect").value;
+    const subId = el("planSubSelect").value;
+    const startHM = el("planStart").value;
+    const endHM = el("planEnd").value;
+    const ok = addPlan(taskId, subId, viewDate, startHM, endHM);
+    if(!ok){ alert("開始・終了時刻を確認してください（終了は開始より後にしてください）"); return; }
+    el("planStart").value = "";
+    el("planEnd").value = "";
+  };
+
   el("exportBtn").onclick = ()=>{
     const rows = [["date","task","sub","start","end","minutes"]];
     state.segments.slice().sort((a,b)=> a.start<b.start?-1:1).forEach(s=>{
@@ -763,7 +962,7 @@
   // tick
   setInterval(()=>{
     renderClock();
-    if(isToday(viewDate)){ renderDayBar(); renderTotals(); renderTasks(); }
+    if(isToday(viewDate)){ renderDayBar(); renderTotals(); renderTasks(); renderPlanList(); }
   }, 1000);
 
   renderAll();
