@@ -48,20 +48,31 @@
   .clock-time{font-family:var(--mono); font-size:44px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:.02em;}
   .clock-sub{font-size:12px; color:var(--text-dim);}
 
-  .grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:10px;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(112px,1fr)); gap:8px;}
   .task-btn{
-    position:relative; border:none; border-radius:14px; padding:16px 14px 14px; text-align:left;
-    color:#151318; font-weight:700; font-size:16px; min-height:76px; overflow:hidden;
-    display:flex; flex-direction:column; justify-content:space-between; gap:10px;
+    position:relative; border:none; border-radius:14px; padding:13px 12px 11px; text-align:left;
+    color:#151318; font-weight:700; font-size:15px; min-height:66px; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:space-between; gap:8px;
   }
-  .task-btn .name{font-size:16px;}
-  .task-btn .meta{font-family:var(--mono); font-size:12px; font-weight:500; opacity:.75;}
+  .task-btn .name{font-size:15px; line-height:1.2;}
+  .task-btn .meta{font-family:var(--mono); font-size:11px; font-weight:500; opacity:.75;}
   .task-btn.active{outline:3px solid rgba(255,255,255,.55); outline-offset:-3px;}
   .task-btn:active{filter:brightness(0.92);}
   .add-btn{
     border:1.5px dashed var(--line); background:transparent; color:var(--text-dim);
-    border-radius:14px; min-height:76px; font-size:15px;
+    border-radius:14px; min-height:66px; font-size:14px;
   }
+  .subgrid{grid-template-columns:repeat(auto-fill, minmax(104px,1fr));}
+  .sub-btn{
+    position:relative; border:1px solid var(--line); border-radius:12px; padding:10px 11px 9px; text-align:left;
+    background:var(--surface); color:var(--text); font-weight:600; font-size:13px; min-height:56px; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:space-between; gap:6px;
+  }
+  .sub-btn .sub-parent{display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text-dim); font-weight:500;}
+  .sub-btn .sub-parent .sw{width:7px; height:7px; border-radius:50%; flex:none;}
+  .sub-btn .meta{font-family:var(--mono); font-size:10px; color:var(--text-dim); opacity:.85;}
+  .sub-btn.active{border-color:var(--live); box-shadow:0 0 0 1px var(--live) inset;}
+  .sub-btn:active{filter:brightness(1.15);}
   .stopbar{
     display:flex; gap:10px;
   }
@@ -127,11 +138,23 @@
   .btn-ghost{background:var(--surface-2); color:var(--text);}
   .btn-danger{background:transparent; color:var(--danger); border:1px solid var(--line) !important;}
   .close-x{align-self:flex-end; background:none; border:none; color:var(--text-dim); font-size:20px; margin:-8px -6px 0 0;}
-  .task-list-edit{display:flex; flex-direction:column; gap:8px; max-height:40vh; overflow-y:auto;}
+  .sheet-scroll{overflow-y:auto; max-height:76vh; display:flex; flex-direction:column; gap:14px;}
+  .task-list-edit{display:flex; flex-direction:column; gap:10px; max-height:34vh; overflow-y:auto;}
   .tle-row{display:flex; align-items:center; gap:10px; background:var(--surface-2); border-radius:10px; padding:8px 10px;}
   .tle-row .sw{width:14px; height:14px; border-radius:50%; flex:none;}
   .tle-row .nm{flex:1; font-size:14px;}
   .tle-row button{background:none; border:none; color:var(--text-dim); font-size:14px;}
+  .tag-list-edit{display:flex; flex-direction:column; gap:8px; max-height:24vh; overflow-y:auto;}
+  .tle-subs{display:flex; flex-direction:column; gap:6px; padding:0 4px 4px 26px;}
+  .tle-sub-chip{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim);}
+  .tle-sub-chip .nm{flex:1;}
+  .tle-sub-chip button{background:none; border:none; color:var(--text-dim); font-size:13px;}
+  .tle-sub-add{display:flex; gap:6px;}
+  .tle-sub-add input{
+    flex:1; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; color:var(--text);
+    padding:8px 10px; font-size:13px; font-family:var(--sans);
+  }
+  .tle-sub-add button{background:var(--surface-2); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:8px 12px; font-size:13px;}
 </style>
 </head>
 <body>
@@ -152,6 +175,9 @@
   </div>
 
   <div class="grid" id="taskGrid"></div>
+
+  <div class="section-label" id="subLabel" style="display:none;">サブ項目</div>
+  <div class="grid subgrid" id="subGrid"></div>
 
   <div class="stopbar">
     <button class="stop-btn" id="stopAllBtn">■ すべて停止</button>
@@ -177,7 +203,7 @@
       <h3>設定</h3>
       <div>
         <label>Google Apps Script Webhook URL（任意・スプレッドシート自動送信）</label>
-        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/AKfycby2ccU8WNcuE_3Qh6Ykx2lDgpUPd_eLT2Bn9lQjmDU8LYFI5coXpAyBYSyT7IV5uE7NQQ/exec">
+        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/library/d/1j08FnyR5RX0zRbUy2kNHt14HWbZuJe2mw8zUG9sroAAyr-aJFuhh4mr6/2">
       </div>
       <div class="row">
         <button class="btn-ghost" id="saveSettings">保存</button>
@@ -192,57 +218,81 @@
   <div class="overlay" id="taskEditOverlay">
     <div class="sheet">
       <button class="close-x" data-close="taskEditOverlay">✕</button>
-      <h3>タスク編集</h3>
-      <div class="task-list-edit" id="taskListEdit"></div>
-      <div>
-        <label>新しいタスク名</label>
-        <input type="text" id="newTaskName" placeholder="例：化学">
-      </div>
-      <div class="swatches" id="newTaskSwatches"></div>
-      <div class="row">
-        <button class="btn-primary" id="addTaskBtn">追加</button>
+      <div class="sheet-scroll">
+        <h3>タスク編集</h3>
+        <div class="task-list-edit" id="taskListEdit"></div>
+        <div>
+          <label>新しいタスク名</label>
+          <input type="text" id="newTaskName" placeholder="例：化学">
+        </div>
+        <div class="swatches" id="newTaskSwatches"></div>
+        <div class="row">
+          <button class="btn-primary" id="addTaskBtn">追加</button>
+        </div>
+
+        <h3 style="margin-top:8px;">タグ（サブ項目）</h3>
+        <div class="tag-list-edit" id="tagListEdit"></div>
+        <div class="tle-sub-add">
+          <input type="text" id="newTagName" placeholder="例：ターゲット">
+          <button id="addTagBtn">＋</button>
+        </div>
+        <div class="clock-sub" style="text-align:left; padding:2px 2px 6px;">タグはどの教科とも自由に組み合わせられます（教科とタグ、両方のボタンが同時に反応します）</div>
       </div>
     </div>
   </div>
 
 <script>
+
 (function(){
   "use strict";
   const STORAGE_KEY = "switchTracker_v1";
-  const PALETTE = ["#f0a030","#5fa8d3","#7fb77e","#c97bc9","#e1735e","#4fc3c0","#e0c667","#9a9dc4"];
+  const PALETTE = ["#f0a030","#5fa8d3","#7fb77e","#c97bc9","#e1735e","#4fc3c0","#e0c667","#9a9dc4",
+                    "#d98fb0","#6fbf73","#c98f5f","#5f9ee1","#b5d35a","#e07f9f","#7fa0e0","#d9a441"];
 
   const defaultState = () => ({
     tasks: [
-      {id:"t1", name:"現代文", color:"#f0a030"},
-      {id:"t2", name:"漢文", color:"#f0a030"},
-      {id:"t3", name:"古文", color:"#f0a030"},
-      {id:"t4", name:"地理", color:"#f0a030"},
-      {id:"t5", name:"歴史", color:"#f0a030"},
-      {id:"t6", name:"政治・経済(倫理)", color:"#f0a030"},
-      {id:"t7", name:"数学Ⅰ", color:"#f0a030"},
-      {id:"t8", name:"数学Ⅱ", color:"#f0a030"},
-      {id:"t9", name:"数学Ⅲ", color:"#f0a030"},
-      {id:"t10", name:"数学A", color:"#f0a030"},
-      {id:"t11", name:"数学B", color:"#f0a030"},
-      {id:"t12", name:"数学C", color:"#f0a030"},
-      {id:"t13", name:"化学", color:"#f0a030"},
-      {id:"t14", name:"生物", color:"#f0a030"},
-      {id:"t15", name:"物理", color:"#5fa8d3"},
-      {id:"t16", name:"地学", color:"#f0a030"},
-      {id:"t17", name:"英語", color:"#7fb77e"},
-      {id:"t18", name:"情報", color:"#f0a030"},
-      {id:"t19", name:"学校関係", color:"#f0a030"},
-      {id:"t20", name:"遊び", color:"#f0a030"},
-      {id:"t21", name:"移動", color:"#f0a030"},
-      {id:"t22", name:"睡眠", color:"#f0a030"},
-      {id:"t23", name:"食事", color:"#f0a030"},
-      {id:"t24", name:"その他", color:"#f0a030"},
+      // 国語（赤系）
+      {id:"t1", name:"現代文", color:"#e1735e"},
+      {id:"t2", name:"漢文", color:"#c9573f"},
+      {id:"t3", name:"古文", color:"#f0a08c"},
+      // 地歴公民（茶系）
+      {id:"t4", name:"地理", color:"#c98f5f"},
+      {id:"t5", name:"歴史", color:"#a8703f"},
+      {id:"t6", name:"政治・経済(倫理)", color:"#dba873"},
+      // 数学（青系）
+      {id:"t7", name:"数学Ⅰ", color:"#5fa8d3"},
+      {id:"t8", name:"数学Ⅱ", color:"#4a8ab8"},
+      {id:"t9", name:"数学Ⅲ", color:"#7fc4e8"},
+      {id:"t10", name:"数学A", color:"#3a6f96"},
+      {id:"t11", name:"数学B", color:"#6fb6dd"},
+      {id:"t12", name:"数学C", color:"#2c5878"},
+      // 理科（緑系）
+      {id:"t13", name:"化学", color:"#7fb77e"},
+      {id:"t14", name:"生物", color:"#6aa869"},
+      {id:"t15", name:"物理", color:"#8fcf8c"},
+      {id:"t16", name:"地学", color:"#588f57"},
+      // 単独教科
+      {id:"t17", name:"英語", color:"#c97bc9"},
+      {id:"t18", name:"情報", color:"#4fc3c0"},
+      // 生活系
+      {id:"t19", name:"学校関係", color:"#7d8fa3"},
+      {id:"t20", name:"遊び", color:"#d98fb0"},
+      {id:"t21", name:"移動", color:"#9fb0c9"},
+      {id:"t22", name:"睡眠", color:"#5a5fa0"},
+      {id:"t23", name:"食事", color:"#e0954a"},
+      {id:"t24", name:"その他", color:"#7a7a7a"},
       {id:"t25", name:"休憩", color:"#8b889a"},
     ],
-    segments: [], // {id, taskId, taskName, taskColor, start, end}  (ISO strings)
-    active: null, // {taskId, taskName, taskColor, start}
+    tags: [ // タグ（サブ項目）：どの教科とも自由に組み合わせられる
+      {id:"g1", name:"チャート"},
+      {id:"g2", name:"ターゲット"},
+    ],
+    segments: [], // {id, taskId, taskName, taskColor, subId, subName, start, end}  (ISO strings) ※sub=タグ
+    active: null, // {taskId, taskName, taskColor, subId, subName, start}
     settings: {gasUrl: ""}
   });
+
+  let pendingTag = null; // メインが停止中のときに先にタグだけ選んでおく一時状態
 
   let state = load();
   let viewDate = todayStr();
@@ -252,9 +302,20 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if(!raw) return defaultState();
       const parsed = JSON.parse(raw);
+      // 旧バージョン（教科ごとのsubtasks）からの移行：名前を重複なく吸い上げてグローバルtagsにする
+      let migratedTags = null;
+      if(!parsed.tags && parsed.tasks){
+        const seen = {}; const list = [];
+        parsed.tasks.forEach(t=> (t.subtasks||[]).forEach(s=>{
+          if(!seen[s.name]){ seen[s.name]=true; list.push({id:"g"+Date.now()+Math.random().toString(36).slice(2,5), name:s.name}); }
+        }));
+        if(list.length) migratedTags = list;
+      }
       return Object.assign(defaultState(), parsed, {
-        tasks: parsed.tasks && parsed.tasks.length ? parsed.tasks : defaultState().tasks,
-        segments: parsed.segments || [],
+        tasks: (parsed.tasks && parsed.tasks.length ? parsed.tasks : defaultState().tasks)
+          .map(t=> ({id:t.id, name:t.name, color:t.color})),
+        tags: migratedTags || (parsed.tags && parsed.tags.length ? parsed.tags : defaultState().tags),
+        segments: (parsed.segments || []).map(s=> Object.assign({subId:"", subName:""}, s)),
         settings: Object.assign({gasUrl:""}, parsed.settings||{})
       });
     }catch(e){ return defaultState(); }
@@ -280,14 +341,45 @@
   // ---- core switching logic ----
   function switchTask(task){
     const now = new Date().toISOString();
+    const carryTagId = state.active ? state.active.subId : (pendingTag || "");
+    const carryTagName = state.active ? state.active.subName : tagName(pendingTag);
     closeActive(now);
-    state.active = {taskId: task.id, taskName: task.name, taskColor: task.color, start: now};
+    state.active = {
+      taskId: task.id, taskName: task.name, taskColor: task.color,
+      subId: carryTagId || "", subName: carryTagName || "",
+      start: now
+    };
+    pendingTag = null;
     save();
     renderAll();
+  }
+  function toggleTag(tag){
+    const now = new Date().toISOString();
+    if(state.active){
+      const turningOff = state.active.subId === tag.id;
+      const task = {id: state.active.taskId, name: state.active.taskName, color: state.active.taskColor};
+      closeActive(now);
+      state.active = {
+        taskId: task.id, taskName: task.name, taskColor: task.color,
+        subId: turningOff ? "" : tag.id, subName: turningOff ? "" : tag.name,
+        start: now
+      };
+    } else {
+      // メインが停止中：タグだけを予約選択（次にメインを押した瞬間に反映）
+      pendingTag = (pendingTag === tag.id) ? null : tag.id;
+    }
+    save();
+    renderAll();
+  }
+  function tagName(id){
+    if(!id) return "";
+    const t = state.tags.find(x=>x.id===id);
+    return t ? t.name : "";
   }
   function stopAll(){
     if(!state.active) return;
     closeActive(new Date().toISOString());
+    pendingTag = null;
     save();
     renderAll();
   }
@@ -298,6 +390,8 @@
       taskId: state.active.taskId,
       taskName: state.active.taskName,
       taskColor: state.active.taskColor,
+      subId: state.active.subId || "",
+      subName: state.active.subName || "",
       start: state.active.start,
       end: nowIso
     };
@@ -313,7 +407,7 @@
         method: "POST",
         mode: "no-cors",
         headers: {"Content-Type":"text/plain"},
-        body: JSON.stringify({task: seg.taskName, start: seg.start, end: seg.end})
+        body: JSON.stringify({task: seg.taskName, sub: seg.subName || "", start: seg.start, end: seg.end, color: seg.taskColor})
       }).catch(()=>{});
     }catch(e){}
   }
@@ -322,7 +416,7 @@
     save(); renderAll();
   }
 
-  // ---- task CRUD ----
+  // ---- task / tag CRUD ----
   function addTask(name, color){
     if(!name.trim()) return;
     state.tasks.push({id:"t"+Date.now(), name:name.trim(), color});
@@ -331,6 +425,17 @@
   function deleteTask(id){
     if(state.active && state.active.taskId===id){ stopAll(); }
     state.tasks = state.tasks.filter(t=>t.id!==id);
+    save(); renderAll();
+  }
+  function addTag(name){
+    if(!name.trim()) return;
+    state.tags.push({id:"g"+Date.now(), name:name.trim()});
+    save(); renderAll();
+  }
+  function deleteTag(id){
+    if(state.active && state.active.subId===id){ state.active.subId=""; state.active.subName=""; }
+    if(pendingTag===id) pendingTag=null;
+    state.tags = state.tags.filter(t=>t.id!==id);
     save(); renderAll();
   }
 
@@ -345,7 +450,7 @@
     const dot = el("statusDot");
     if(state.active){
       dot.classList.add("pulse");
-      el("clockTaskName").textContent = state.active.taskName;
+      el("clockTaskName").textContent = state.active.subName ? `${state.active.taskName} ・ ${state.active.subName}` : state.active.taskName;
       const secs = Math.floor((Date.now() - new Date(state.active.start).getTime())/1000);
       el("clockTime").textContent = hms(secs);
       el("clockSub").textContent = "開始 " + fmtHM(state.active.start);
@@ -353,7 +458,7 @@
       dot.classList.remove("pulse");
       el("clockTaskName").textContent = "停止中";
       el("clockTime").textContent = "00:00:00";
-      el("clockSub").textContent = "タップして開始";
+      el("clockSub").textContent = pendingTag ? `「${tagName(pendingTag)}」を選択中 → 教科をタップ` : "タップして開始";
     }
   }
   function hms(totalSec){
@@ -368,7 +473,8 @@
     grid.innerHTML = "";
     state.tasks.forEach(t=>{
       const btn = document.createElement("button");
-      btn.className = "task-btn" + (state.active && state.active.taskId===t.id ? " active":"");
+      const isActive = state.active && state.active.taskId===t.id;
+      btn.className = "task-btn" + (isActive ? " active":"");
       btn.style.background = t.color;
       const todaysMin = minutesForTaskToday(t.id);
       btn.innerHTML = `<span class="name">${escapeHtml(t.name)}</span><span class="meta">${todaysMin>0? fmtDur(todaysMin) : "―"}</span>`;
@@ -382,6 +488,38 @@
     grid.appendChild(addBtn);
 
     el("stopAllBtn").disabled = !state.active;
+    renderSubtasks();
+  }
+
+  function renderSubtasks(){
+    const grid = el("subGrid");
+    const label = el("subLabel");
+    grid.innerHTML = "";
+    if(!state.tags || state.tags.length===0){ label.style.display="none"; grid.style.display="none"; return; }
+    label.style.display=""; grid.style.display="";
+    state.tags.forEach(tag=>{
+      const btn = document.createElement("button");
+      const isActive = (state.active && state.active.subId===tag.id) || (!state.active && pendingTag===tag.id);
+      btn.className = "sub-btn" + (isActive ? " active":"");
+      const todaysMin = minutesForTagToday(tag.id);
+      btn.innerHTML = `
+        <span class="name">${escapeHtml(tag.name)}</span>
+        <span class="meta">${todaysMin>0? fmtDur(todaysMin) : "―"}</span>
+      `;
+      btn.onclick = ()=> toggleTag(tag);
+      grid.appendChild(btn);
+    });
+  }
+
+  function minutesForTagToday(tagId){
+    let total = 0;
+    segmentsForDate(todayStr()).forEach(s=>{
+      if(s.subId===tagId) total += (new Date(s.end)-new Date(s.start))/60000;
+    });
+    if(state.active && state.active.subId===tagId){
+      total += (Date.now()-new Date(state.active.start).getTime())/60000;
+    }
+    return Math.round(total);
   }
 
   function minutesForTaskToday(taskId){
@@ -455,9 +593,10 @@
       const mins = Math.round((new Date(s.end)-new Date(s.start))/60000);
       const row = document.createElement("div");
       row.className = "log-row";
+      const who = s.subName ? `${escapeHtml(s.taskName)} ・ ${escapeHtml(s.subName)}` : escapeHtml(s.taskName);
       row.innerHTML = `
         <span class="sw" style="background:${s.taskColor}"></span>
-        <span class="who">${escapeHtml(s.taskName)}</span>
+        <span class="who">${who}</span>
         <span class="when">${fmtHM(s.start)}–${fmtHM(s.end)}</span>
         <span class="dur">${mins}分</span>
         <button class="del" data-id="${s.id}">✕</button>
@@ -480,6 +619,22 @@
       row.className = "tle-row";
       row.innerHTML = `<span class="sw" style="background:${t.color}"></span><span class="nm">${escapeHtml(t.name)}</span><button data-id="${t.id}">削除</button>`;
       row.querySelector("button").onclick = ()=>{ deleteTask(t.id); renderTaskEditList(); };
+      box.appendChild(row);
+    });
+  }
+
+  function renderTagEditList(){
+    const box = el("tagListEdit");
+    box.innerHTML = "";
+    if(!state.tags.length){
+      box.innerHTML = `<div class="clock-sub">タグはまだありません</div>`;
+      return;
+    }
+    state.tags.forEach(tag=>{
+      const row = document.createElement("div");
+      row.className = "tle-row";
+      row.innerHTML = `<span class="nm">${escapeHtml(tag.name)}</span><button data-id="${tag.id}">削除</button>`;
+      row.querySelector("button").onclick = ()=>{ deleteTag(tag.id); renderTagEditList(); };
       box.appendChild(row);
     });
   }
@@ -539,6 +694,7 @@
   el("wipeData").onclick = ()=>{
     if(confirm("この端末に保存された全ての記録を削除します。よろしいですか？")){
       state = defaultState();
+      pendingTag = null;
       save();
       renderAll();
       closeSheet("settingsOverlay");
@@ -547,8 +703,10 @@
 
   el("editTasksBtn").onclick = ()=>{
     renderTaskEditList();
+    renderTagEditList();
     renderSwatchPicker();
     el("newTaskName").value = "";
+    el("newTagName").value = "";
     openSheet("taskEditOverlay");
   };
   el("addTaskBtn").onclick = ()=>{
@@ -560,14 +718,20 @@
     renderTaskEditList();
     el("newTaskName").value = "";
   };
+  el("addTagBtn").onclick = ()=>{
+    const input = el("newTagName");
+    addTag(input.value);
+    renderTagEditList();
+    input.value = "";
+  };
 
   el("stopAllBtn").onclick = stopAll;
 
   el("exportBtn").onclick = ()=>{
-    const rows = [["date","task","start","end","minutes"]];
+    const rows = [["date","task","sub","start","end","minutes"]];
     state.segments.slice().sort((a,b)=> a.start<b.start?-1:1).forEach(s=>{
       const mins = Math.round((new Date(s.end)-new Date(s.start))/60000);
-      rows.push([dateStrOf(s.start), s.taskName, s.start, s.end, mins]);
+      rows.push([dateStrOf(s.start), s.taskName, s.subName || "", s.start, s.end, mins]);
     });
     const csv = rows.map(r=> r.map(v=> `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
