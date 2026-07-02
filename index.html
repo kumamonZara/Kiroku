@@ -121,6 +121,12 @@
   .plan-input-row button{
     background:var(--live); color:#151318; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px;
   }
+  .plan-tag-picker{display:flex; flex-wrap:wrap; gap:6px; width:100%;}
+  .plan-tag-chip{
+    background:var(--surface-2); border:1px solid var(--line); color:var(--text-dim);
+    border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600;
+  }
+  .plan-tag-chip.sel{background:var(--live); border-color:var(--live); color:#151318;}
 
   .task-groups{display:flex; flex-direction:column; gap:14px;}
   .task-group{display:flex; flex-direction:column; gap:6px;}
@@ -240,10 +246,10 @@
       </div>
       <div class="plan-input-row" id="planInputRow" style="display:none;">
         <select id="planTaskSelect"></select>
-        <select id="planSubSelect"></select>
         <input type="time" id="planStart">
         <input type="time" id="planEnd">
         <button id="planAddBtn">追加</button>
+        <div class="plan-tag-picker" id="planTagPicker"></div>
       </div>
       <div class="log" id="planList"></div>
     </div>
@@ -256,7 +262,7 @@
       <h3>設定</h3>
       <div>
         <label>Google Apps Script Webhook URL（任意・スプレッドシート自動送信）</label>
-        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/AKfycby2ccU8WNcuE_3Qh6Ykx2lDgpUPd_eLT2Bn9lQjmDU8LYFI5coXpAyBYSyT7IV5uE7NQQ/exec">
       </div>
       <div class="row">
         <button class="btn-ghost" id="saveSettings">保存</button>
@@ -327,17 +333,18 @@
       // 語学・情報
       {id:"t17", name:"英語", color:"#c97bc9", group:"語学・情報"},
       {id:"t18", name:"情報", color:"#4fc3c0", group:"語学・情報"},
-      // 生活系
+      // 学校
       {id:"t19", name:"学校関係", color:"#7d8fa3", group:"学校"},
       {id:"t20", name:"授業", color:"#d98fb0", group:"学校"},
+      // 生活系
       {id:"t21", name:"移動", color:"#9fb0c9", group:"生活"},
       {id:"t22", name:"睡眠", color:"#5a5fa0", group:"生活"},
       {id:"t23", name:"食事", color:"#e0954a", group:"生活"},
       {id:"t24", name:"その他", color:"#7a7a7a", group:"生活"},
       {id:"t25", name:"休憩", color:"#8b889a", group:"生活"},
-      {id:"t26", name:"遊び・趣味", color:"#48ab12", group:"生活"}
+      {id:"t26", name:"遊び・趣味", color:"#48ab12", group:"生活"},
     ],
-    tags: [ // タグ（サブ項目）：どの教科とも自由に組み合わせられる
+    tags: [ // タグ（サブ項目）：どの教科とも自由に組み合わせられ、複数同時選択可
       {id:"g1", name:"チャート"},
       {id:"g2", name:"クリアー"},
       {id:"g3", name:"基礎問題精講"},
@@ -349,16 +356,24 @@
       {id:"g9", name:"復習"},
       {id:"g10", name:"課題"},
     ],
-    segments: [], // {id, taskId, taskName, taskColor, subId, subName, start, end}  (ISO strings) ※sub=タグ
-    plans: [], // {id, taskId, taskName, taskColor, subId, subName, start, end} 予定（ISO strings）
-    active: null, // {taskId, taskName, taskColor, subId, subName, start}
+    segments: [], // {id, taskId, taskName, taskColor, tagIds:[], tagNames:[], start, end}  (ISO strings)
+    plans: [], // {id, taskId, taskName, taskColor, tagIds:[], tagNames:[], start, end} 予定（ISO strings）
+    active: null, // {taskId, taskName, taskColor, tagIds:[], tagNames:[], start}
     settings: {gasUrl: "https://script.google.com/macros/s/AKfycby2ccU8WNcuE_3Qh6Ykx2lDgpUPd_eLT2Bn9lQjmDU8LYFI5coXpAyBYSyT7IV5uE7NQQ/exec"}
   });
 
-  let pendingTag = null; // メインが停止中のときに先にタグだけ選んでおく一時状態
+  let pendingTags = []; // メインが停止中のときに先にタグだけ選んでおく一時状態
 
   let state = load();
   let viewDate = todayStr();
+
+  // 旧の単数 subId/subName を新しい配列 tagIds/tagNames に変換
+  function toMultiTag(obj){
+    if(obj.tagIds) return obj;
+    const tagIds = obj.subId ? [obj.subId] : [];
+    const tagNames = obj.subName ? [obj.subName] : [];
+    return Object.assign({}, obj, {tagIds, tagNames});
+  }
 
   function load(){
     try{
@@ -378,8 +393,9 @@
         tasks: (parsed.tasks && parsed.tasks.length ? parsed.tasks : defaultState().tasks)
           .map(t=> ({id:t.id, name:t.name, color:t.color, group:t.group || "その他"})),
         tags: migratedTags || (parsed.tags && parsed.tags.length ? parsed.tags : defaultState().tags),
-        segments: (parsed.segments || []).map(s=> Object.assign({subId:"", subName:""}, s)),
-        plans: (parsed.plans || []).map(p=> Object.assign({subId:"", subName:""}, p)),
+        segments: (parsed.segments || []).map(toMultiTag),
+        plans: (parsed.plans || []).map(toMultiTag),
+        active: parsed.active ? toMultiTag(parsed.active) : null,
         settings: Object.assign({gasUrl: defaultState().settings.gasUrl}, parsed.settings||{})
       });
     }catch(e){ return defaultState(); }
@@ -409,32 +425,36 @@
       return;
     }
     const now = new Date().toISOString();
-    const carryTagId = state.active ? state.active.subId : (pendingTag || "");
-    const carryTagName = state.active ? state.active.subName : tagName(pendingTag);
+    const carryTagIds = state.active ? state.active.tagIds.slice() : pendingTags.slice();
+    const carryTagNames = state.active ? state.active.tagNames.slice() : pendingTags.map(tagName);
     closeActive(now);
     state.active = {
       taskId: task.id, taskName: task.name, taskColor: task.color,
-      subId: carryTagId || "", subName: carryTagName || "",
+      tagIds: carryTagIds, tagNames: carryTagNames,
       start: now
     };
-    pendingTag = null;
+    pendingTags = [];
     save();
     renderAll();
   }
   function toggleTag(tag){
     const now = new Date().toISOString();
     if(state.active){
-      const turningOff = state.active.subId === tag.id;
+      const idx = state.active.tagIds.indexOf(tag.id);
       const task = {id: state.active.taskId, name: state.active.taskName, color: state.active.taskColor};
+      let nextTagIds = state.active.tagIds.slice();
+      if(idx>=0) nextTagIds.splice(idx,1); else nextTagIds.push(tag.id);
+      const nextTagNames = nextTagIds.map(tagName);
       closeActive(now);
       state.active = {
         taskId: task.id, taskName: task.name, taskColor: task.color,
-        subId: turningOff ? "" : tag.id, subName: turningOff ? "" : tag.name,
+        tagIds: nextTagIds, tagNames: nextTagNames,
         start: now
       };
     } else {
       // メインが停止中：タグだけを予約選択（次にメインを押した瞬間に反映）
-      pendingTag = (pendingTag === tag.id) ? null : tag.id;
+      const idx = pendingTags.indexOf(tag.id);
+      if(idx>=0) pendingTags.splice(idx,1); else pendingTags.push(tag.id);
     }
     save();
     renderAll();
@@ -447,7 +467,7 @@
   function stopAll(){
     if(!state.active) return;
     closeActive(new Date().toISOString());
-    pendingTag = null;
+    pendingTags = [];
     save();
     renderAll();
   }
@@ -458,8 +478,8 @@
       taskId: state.active.taskId,
       taskName: state.active.taskName,
       taskColor: state.active.taskColor,
-      subId: state.active.subId || "",
-      subName: state.active.subName || "",
+      tagIds: state.active.tagIds.slice(),
+      tagNames: state.active.tagNames.slice(),
       start: state.active.start,
       end: nowIso
     };
@@ -475,7 +495,7 @@
         method: "POST",
         mode: "no-cors",
         headers: {"Content-Type":"text/plain"},
-        body: JSON.stringify({type:"actual", task: seg.taskName, sub: seg.subName || "", start: seg.start, end: seg.end, color: seg.taskColor})
+        body: JSON.stringify({type:"actual", task: seg.taskName, sub: (seg.tagNames||[]).join("・"), start: seg.start, end: seg.end, color: seg.taskColor})
       }).catch(()=>{});
     }catch(e){}
   }
@@ -487,7 +507,7 @@
         method: "POST",
         mode: "no-cors",
         headers: {"Content-Type":"text/plain"},
-        body: JSON.stringify({type:"plan", task: p.taskName, sub: p.subName || "", start: p.start, end: p.end, color: p.taskColor})
+        body: JSON.stringify({type:"plan", task: p.taskName, sub: (p.tagNames||[]).join("・"), start: p.start, end: p.end, color: p.taskColor})
       }).catch(()=>{});
     }catch(e){}
   }
@@ -500,17 +520,17 @@
   function plansForDate(ds){
     return state.plans.filter(p=>dateStrOf(p.start)===ds).sort((a,b)=> a.start < b.start ? -1 : 1);
   }
-  function addPlan(taskId, subId, dateStr, startHM, endHM){
+  function addPlan(taskId, tagIds, dateStr, startHM, endHM){
     const task = state.tasks.find(t=>t.id===taskId);
     if(!task || !startHM || !endHM) return false;
     const startIso = `${dateStr}T${startHM}:00`;
     let endIso = `${dateStr}T${endHM}:00`;
     if(endIso <= startIso) return false; // 終了が開始より前は不可
-    const sub = subId ? state.tags.find(t=>t.id===subId) : null;
+    const ids = (tagIds||[]).filter(id=> state.tags.some(t=>t.id===id));
     state.plans.push({
       id: "p"+Date.now()+Math.random().toString(36).slice(2,5),
       taskId: task.id, taskName: task.name, taskColor: task.color,
-      subId: sub ? sub.id : "", subName: sub ? sub.name : "",
+      tagIds: ids, tagNames: ids.map(tagName),
       start: startIso, end: endIso
     });
     save();
@@ -522,6 +542,10 @@
     state.plans = state.plans.filter(p=>p.id!==id);
     save(); renderAll();
   }
+  function tagSetsOverlap(a, b){
+    if(!a.length || !b.length) return true; // どちらかがタグ指定なしなら教科一致のみで判定
+    return a.some(id=> b.includes(id));
+  }
   function matchRateForDate(ds){
     const plans = plansForDate(ds);
     if(plans.length===0) return null;
@@ -532,11 +556,11 @@
       totalPlanned += dur;
       let matched = 0;
       segmentsForDate(ds).forEach(s=>{
-        if(s.taskId!==p.taskId || (p.subId && s.subId!==p.subId)) return;
+        if(s.taskId!==p.taskId || !tagSetsOverlap(p.tagIds, s.tagIds)) return;
         const aStart = new Date(s.start).getTime(), aEnd = new Date(s.end).getTime();
         matched += Math.max(0, Math.min(aEnd,pEnd)-Math.max(aStart,pStart));
       });
-      if(isToday(ds) && state.active && state.active.taskId===p.taskId && (!p.subId || state.active.subId===p.subId)){
+      if(isToday(ds) && state.active && state.active.taskId===p.taskId && tagSetsOverlap(p.tagIds, state.active.tagIds)){
         const aStart = new Date(state.active.start).getTime(), aEnd = Date.now();
         matched += Math.max(0, Math.min(aEnd,pEnd)-Math.max(aStart,pStart));
       }
@@ -562,8 +586,12 @@
     save(); renderAll();
   }
   function deleteTag(id){
-    if(state.active && state.active.subId===id){ state.active.subId=""; state.active.subName=""; }
-    if(pendingTag===id) pendingTag=null;
+    if(state.active){
+      const idx = state.active.tagIds.indexOf(id);
+      if(idx>=0){ state.active.tagIds.splice(idx,1); state.active.tagNames.splice(idx,1); }
+    }
+    const pIdx = pendingTags.indexOf(id);
+    if(pIdx>=0) pendingTags.splice(pIdx,1);
     state.tags = state.tags.filter(t=>t.id!==id);
     save(); renderAll();
   }
@@ -579,7 +607,8 @@
     const dot = el("statusDot");
     if(state.active){
       dot.classList.add("pulse");
-      el("clockTaskName").textContent = state.active.subName ? `${state.active.taskName} ・ ${state.active.subName}` : state.active.taskName;
+      const tagPart = state.active.tagNames.length ? ` ・ ${state.active.tagNames.join("・")}` : "";
+      el("clockTaskName").textContent = `${state.active.taskName}${tagPart}`;
       const secs = Math.floor((Date.now() - new Date(state.active.start).getTime())/1000);
       el("clockTime").textContent = hms(secs);
       el("clockSub").textContent = "開始 " + fmtHM(state.active.start);
@@ -587,7 +616,7 @@
       dot.classList.remove("pulse");
       el("clockTaskName").textContent = "停止中";
       el("clockTime").textContent = "00:00:00";
-      el("clockSub").textContent = pendingTag ? `「${tagName(pendingTag)}」を選択中 → 教科をタップ` : "タップして開始";
+      el("clockSub").textContent = pendingTags.length ? `「${pendingTags.map(tagName).join("・")}」を選択中 → 教科をタップ` : "タップして開始";
     }
   }
   function hms(totalSec){
@@ -597,7 +626,7 @@
     return [h,m,s].map(v=>String(v).padStart(2,"0")).join(":");
   }
 
-  const GROUP_ORDER = ["国語","地歴公民","数学","理科","語学・情報","生活","その他"];
+  const GROUP_ORDER = ["国語","地歴公民","数学","理科","語学・情報","学校","生活","その他"];
 
   function renderTasks(){
     const wrap = el("taskGrid");
@@ -654,7 +683,7 @@
     label.style.display=""; grid.style.display="";
     state.tags.forEach(tag=>{
       const btn = document.createElement("button");
-      const isActive = (state.active && state.active.subId===tag.id) || (!state.active && pendingTag===tag.id);
+      const isActive = (state.active && state.active.tagIds.includes(tag.id)) || (!state.active && pendingTags.includes(tag.id));
       btn.className = "sub-btn" + (isActive ? " active":"");
       const todaysMin = minutesForTagToday(tag.id);
       btn.innerHTML = `
@@ -669,9 +698,9 @@
   function minutesForTagToday(tagId){
     let total = 0;
     segmentsForDate(todayStr()).forEach(s=>{
-      if(s.subId===tagId) total += (new Date(s.end)-new Date(s.start))/60000;
+      if(s.tagIds && s.tagIds.includes(tagId)) total += (new Date(s.end)-new Date(s.start))/60000;
     });
-    if(state.active && state.active.subId===tagId){
+    if(state.active && state.active.tagIds.includes(tagId)){
       total += (Date.now()-new Date(state.active.start).getTime())/60000;
     }
     return Math.round(total);
@@ -754,7 +783,7 @@
       const mins = Math.round((new Date(s.end)-new Date(s.start))/60000);
       const row = document.createElement("div");
       row.className = "log-row";
-      const who = s.subName ? `${escapeHtml(s.taskName)} ・ ${escapeHtml(s.subName)}` : escapeHtml(s.taskName);
+      const who = s.tagNames.length ? `${escapeHtml(s.taskName)} ・ ${escapeHtml(s.tagNames.join("・"))}` : escapeHtml(s.taskName);
       row.innerHTML = `
         <span class="sw" style="background:${s.taskColor}"></span>
         <span class="who">${who}</span>
@@ -783,7 +812,7 @@
         const mins = Math.round((new Date(p.end)-new Date(p.start))/60000);
         const row = document.createElement("div");
         row.className = "log-row";
-        const who = p.subName ? `${escapeHtml(p.taskName)} ・ ${escapeHtml(p.subName)}` : escapeHtml(p.taskName);
+        const who = p.tagNames.length ? `${escapeHtml(p.taskName)} ・ ${escapeHtml(p.tagNames.join("・"))}` : escapeHtml(p.taskName);
         row.innerHTML = `
           <span class="sw" style="background:${p.taskColor}"></span>
           <span class="who">${who}</span>
@@ -799,11 +828,29 @@
     el("matchRate").textContent = rate===null ? "" : `一致率 ${rate}%`;
   }
 
+  let planSelectedTagIds = [];
   function populatePlanSelectors(){
     const taskSel = el("planTaskSelect");
     taskSel.innerHTML = state.tasks.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
-    const subSel = el("planSubSelect");
-    subSel.innerHTML = `<option value="">サブなし</option>` + state.tags.map(g=>`<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("");
+    planSelectedTagIds = [];
+    renderPlanTagPicker();
+  }
+  function renderPlanTagPicker(){
+    const box = el("planTagPicker");
+    box.innerHTML = "";
+    if(!state.tags.length) return;
+    state.tags.forEach(tag=>{
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "plan-tag-chip" + (planSelectedTagIds.includes(tag.id) ? " sel" : "");
+      chip.textContent = tag.name;
+      chip.onclick = ()=>{
+        const idx = planSelectedTagIds.indexOf(tag.id);
+        if(idx>=0) planSelectedTagIds.splice(idx,1); else planSelectedTagIds.push(tag.id);
+        renderPlanTagPicker();
+      };
+      box.appendChild(chip);
+    });
   }
 
   function renderTaskEditList(){
@@ -890,7 +937,7 @@
   el("wipeData").onclick = ()=>{
     if(confirm("この端末に保存された全ての記録を削除します。よろしいですか？")){
       state = defaultState();
-      pendingTag = null;
+      pendingTags = [];
       save();
       renderAll();
       closeSheet("settingsOverlay");
@@ -932,20 +979,21 @@
   };
   el("planAddBtn").onclick = ()=>{
     const taskId = el("planTaskSelect").value;
-    const subId = el("planSubSelect").value;
     const startHM = el("planStart").value;
     const endHM = el("planEnd").value;
-    const ok = addPlan(taskId, subId, viewDate, startHM, endHM);
+    const ok = addPlan(taskId, planSelectedTagIds, viewDate, startHM, endHM);
     if(!ok){ alert("開始・終了時刻を確認してください（終了は開始より後にしてください）"); return; }
     el("planStart").value = "";
     el("planEnd").value = "";
+    planSelectedTagIds = [];
+    renderPlanTagPicker();
   };
 
   el("exportBtn").onclick = ()=>{
     const rows = [["date","task","sub","start","end","minutes"]];
     state.segments.slice().sort((a,b)=> a.start<b.start?-1:1).forEach(s=>{
       const mins = Math.round((new Date(s.end)-new Date(s.start))/60000);
-      rows.push([dateStrOf(s.start), s.taskName, s.subName || "", s.start, s.end, mins]);
+      rows.push([dateStrOf(s.start), s.taskName, (s.tagNames||[]).join("・"), s.start, s.end, mins]);
     });
     const csv = rows.map(r=> r.map(v=> `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
