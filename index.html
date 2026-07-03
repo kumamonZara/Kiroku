@@ -262,7 +262,7 @@
       <h3>設定</h3>
       <div>
         <label>Google Apps Script Webhook URL（任意・スプレッドシート自動送信）</label>
-        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/AKfycby2ccU8WNcuE_3Qh6Ykx2lDgpUPd_eLT2Bn9lQjmDU8LYFI5coXpAyBYSyT7IV5uE7NQQ/exec">
+        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
       </div>
       <div class="row">
         <button class="btn-ghost" id="saveSettings">保存</button>
@@ -314,10 +314,10 @@
       {id:"t1", name:"現代文", color:"#e1735e", group:"国語"},
       {id:"t2", name:"漢文", color:"#c9573f", group:"国語"},
       {id:"t3", name:"古文", color:"#f0a08c", group:"国語"},
-      // 地歴公民（茶系）
-      {id:"t4", name:"地理", color:"#c98f5f", group:"地歴公民"},
-      {id:"t5", name:"歴史", color:"#a8703f", group:"地歴公民"},
-      {id:"t6", name:"政治・経済(倫理)", color:"#dba873", group:"地歴公民"},
+      // 地歴公民（茶系） → 社会
+      {id:"t4", name:"地理", color:"#c98f5f", group:"社会"},
+      {id:"t5", name:"歴史", color:"#a8703f", group:"社会"},
+      {id:"t6", name:"政治・経済(倫理)", color:"#dba873", group:"社会"},
       // 数学（青系）
       {id:"t7", name:"数学Ⅰ", color:"#5fa8d3", group:"数学"},
       {id:"t8", name:"数学Ⅱ", color:"#4a8ab8", group:"数学"},
@@ -330,9 +330,9 @@
       {id:"t14", name:"生物", color:"#6aa869", group:"理科"},
       {id:"t15", name:"物理", color:"#8fcf8c", group:"理科"},
       {id:"t16", name:"地学", color:"#588f57", group:"理科"},
-      // 語学・情報
-      {id:"t17", name:"英語", color:"#c97bc9", group:"語学・情報"},
-      {id:"t18", name:"情報", color:"#4fc3c0", group:"語学・情報"},
+      // 英語・情報（それぞれ独立グループ）
+      {id:"t17", name:"英語", color:"#c97bc9", group:"英語"},
+      {id:"t18", name:"情報", color:"#4fc3c0", group:"情報"},
       // 学校
       {id:"t19", name:"学校関係", color:"#7d8fa3", group:"学校"},
       {id:"t20", name:"授業", color:"#d98fb0", group:"学校"},
@@ -429,7 +429,7 @@
     const carryTagNames = state.active ? state.active.tagNames.slice() : pendingTags.map(tagName);
     closeActive(now);
     state.active = {
-      taskId: task.id, taskName: task.name, taskColor: task.color,
+      taskId: task.id, taskName: task.name, taskColor: task.color, taskGroup: task.group || "その他",
       tagIds: carryTagIds, tagNames: carryTagNames,
       start: now
     };
@@ -441,13 +441,13 @@
     const now = new Date().toISOString();
     if(state.active){
       const idx = state.active.tagIds.indexOf(tag.id);
-      const task = {id: state.active.taskId, name: state.active.taskName, color: state.active.taskColor};
+      const task = {id: state.active.taskId, name: state.active.taskName, color: state.active.taskColor, group: state.active.taskGroup};
       let nextTagIds = state.active.tagIds.slice();
       if(idx>=0) nextTagIds.splice(idx,1); else nextTagIds.push(tag.id);
       const nextTagNames = nextTagIds.map(tagName);
       closeActive(now);
       state.active = {
-        taskId: task.id, taskName: task.name, taskColor: task.color,
+        taskId: task.id, taskName: task.name, taskColor: task.color, taskGroup: task.group,
         tagIds: nextTagIds, tagNames: nextTagNames,
         start: now
       };
@@ -478,6 +478,7 @@
       taskId: state.active.taskId,
       taskName: state.active.taskName,
       taskColor: state.active.taskColor,
+      taskGroup: state.active.taskGroup || "その他",
       tagIds: state.active.tagIds.slice(),
       tagNames: state.active.tagNames.slice(),
       start: state.active.start,
@@ -495,7 +496,7 @@
         method: "POST",
         mode: "no-cors",
         headers: {"Content-Type":"text/plain"},
-        body: JSON.stringify({type:"actual", task: seg.taskName, sub: (seg.tagNames||[]).join("・"), start: seg.start, end: seg.end, color: seg.taskColor})
+        body: JSON.stringify({type:"actual", task: seg.taskName, sub: (seg.tagNames||[]).join("・"), start: seg.start, end: seg.end, color: seg.taskColor, group: seg.taskGroup || ""})
       }).catch(()=>{});
     }catch(e){}
   }
@@ -507,7 +508,7 @@
         method: "POST",
         mode: "no-cors",
         headers: {"Content-Type":"text/plain"},
-        body: JSON.stringify({type:"plan", task: p.taskName, sub: (p.tagNames||[]).join("・"), start: p.start, end: p.end, color: p.taskColor})
+        body: JSON.stringify({type:"plan", task: p.taskName, sub: (p.tagNames||[]).join("・"), start: p.start, end: p.end, color: p.taskColor, group: p.taskGroup || ""})
       }).catch(()=>{});
     }catch(e){}
   }
@@ -529,7 +530,7 @@
     const ids = (tagIds||[]).filter(id=> state.tags.some(t=>t.id===id));
     state.plans.push({
       id: "p"+Date.now()+Math.random().toString(36).slice(2,5),
-      taskId: task.id, taskName: task.name, taskColor: task.color,
+      taskId: task.id, taskName: task.name, taskColor: task.color, taskGroup: task.group || "その他",
       tagIds: ids, tagNames: ids.map(tagName),
       start: startIso, end: endIso
     });
@@ -626,7 +627,7 @@
     return [h,m,s].map(v=>String(v).padStart(2,"0")).join(":");
   }
 
-  const GROUP_ORDER = ["国語","地歴公民","数学","理科","語学・情報","学校","生活","その他"];
+  const GROUP_ORDER = ["国語","社会","数学","理科","英語","情報","学校","生活","その他"];
 
   function renderTasks(){
     const wrap = el("taskGrid");
